@@ -1,0 +1,32 @@
+# Direct (top-level) dependencies for Lumina. Exact versions are pinned in
+# requirements.txt (generated via pip freeze). Edit this file, reinstall, refreeze.
+
+# --- Core config ---
+python-dotenv
+pydantic
+
+# --- RAG / orchestration ---
+langchain
+langchain-community
+langchain-text-splitters
+langchain-groq
+
+# --- Embeddings (pulls torch) ---
+sentence-transformers
+
+# --- Vector DB ---
+qdrant-client
+
+# --- Document parsing ---
+pymupdf
+beautifulsoup4
+
+# --- UI / API ---
+streamlit
+fastapi
+uvicorn[standard]
+python-multipart
+
+# --- Dev / test ---
+pytest
+ruff

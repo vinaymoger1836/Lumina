@@ -1,0 +1,9 @@
+[server]
+# The hot-reload watcher walks every imported module's __path__, which triggers
+# transformers' lazy imports (e.g. zoedepth -> torchvision) and floods the console
+# with non-fatal tracebacks. We don't ship torchvision and don't need live reload
+# for normal use, so disable the watcher. Restart Streamlit manually after edits.
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
