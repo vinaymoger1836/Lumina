@@ -7,7 +7,7 @@ sdk: streamlit
 sdk_version: 1.58.0
 app_file: ui/streamlit_app.py
 pinned: false
-short_description: RAG over your own PDFs and URLs, answered by Llama 3.3 via Groq
+short_description: RAG over your PDFs and URLs, answered by Llama 3.3
 ---
 
 # Lumina — AI Research & Knowledge Agent
