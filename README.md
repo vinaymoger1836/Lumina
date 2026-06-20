@@ -1,4 +1,19 @@
+---
+title: Lumina
+emoji: 📚
+colorFrom: blue
+colorTo: indigo
+sdk: streamlit
+sdk_version: 1.58.0
+app_file: ui/streamlit_app.py
+pinned: false
+short_description: RAG over your own PDFs and URLs, answered by Llama 3.3 via Groq
+---
+
 # Lumina — AI Research & Knowledge Agent
+
+> The block above is Hugging Face Spaces configuration. It is ignored by GitHub
+> rendering and required by HF to launch the Streamlit app.
 
 An end-to-end AI app: **RAG** over your own PDFs/URLs, an **agentic layer** (LangGraph
 tool use), and **workflow automation** (n8n). Built on free-tier tools, deployed to
