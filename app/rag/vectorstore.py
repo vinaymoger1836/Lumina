@@ -32,7 +32,6 @@ def get_client() -> QdrantClient:
 
 def ensure_collection(collection: str | None = None) -> str:
     """Create the collection if missing; return its name.
-
     Vector size is taken from the embedding model so the two can never drift.
     """
     name = collection or settings.qdrant_collection
@@ -55,3 +54,26 @@ def ensure_collection(collection: str | None = None) -> str:
         field_schema=qmodels.PayloadSchemaType.KEYWORD,
     )
     return name
+
+
+def delete_by_source(source: str, collection: str | None = None) -> None:
+    """Remove all chunks belonging to one document, by its `source` value.
+
+    Used to make re-ingestion idempotent: delete the prior version of a document
+    before upserting the new one, so retries (e.g. from n8n) don't create
+    duplicate chunks.
+    """
+    name = ensure_collection(collection)
+    get_client().delete(
+        collection_name=name,
+        points_selector=qmodels.FilterSelector(
+            filter=qmodels.Filter(
+                must=[
+                    qmodels.FieldCondition(
+                        key="source", match=qmodels.MatchValue(value=source)
+                    )
+                ]
+            )
+        ),
+    )
+    logger.info("Deleted existing chunks for source '%s' from '%s'", source, name)

@@ -16,11 +16,13 @@ from app.config import ConfigError
 from app.logging_config import configure_logging
 from app.rag.ingest import IngestionError, ingest_pdf, ingest_url
 from app.rag.pipeline import answer_question
+from app.workflows.n8n_webhooks import router as webhooks_router
 
 configure_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Lumina API", version="0.1.0")
+app.include_router(webhooks_router)
 
 
 class UrlIngestRequest(BaseModel):
