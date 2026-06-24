@@ -64,6 +64,10 @@ class Settings:
     top_k: int = 4
     max_upload_mb: int = 25
 
+    # --- Agent (Phase 2) ---
+    web_search_results: int = 5
+    agent_recursion_limit: int = 12
+
     def require(self, *names: str) -> None:
         """Raise ConfigError if any named secret attribute is unset.
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
-from app.config import settings
+from app.llm import build_chat_model
 from app.rag.retriever import RetrievedChunk, search
 
 logger = logging.getLogger(__name__)
@@ -39,13 +39,7 @@ def _build_context(chunks: list[RetrievedChunk]) -> str:
 
 def _llm() -> ChatGroq:
     """Construct the Groq chat model, validating the API key first."""
-    settings.require("groq_api_key")
-    return ChatGroq(
-        model=settings.groq_model,
-        api_key=settings.groq_api_key,
-        temperature=0.1,
-        max_retries=2,
-    )
+    return build_chat_model(temperature=0.1)
 
 
 def answer_question(question: str, top_k: int | None = None) -> Answer:

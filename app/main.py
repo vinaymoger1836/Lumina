@@ -11,6 +11,7 @@ import logging
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from app.agent.graph import run_agent
 from app.config import ConfigError
 from app.logging_config import configure_logging
 from app.rag.ingest import IngestionError, ingest_pdf, ingest_url
@@ -59,6 +60,29 @@ class AskResponse(BaseModel):
     sources: list[Source]
 
 
+class AgentAskRequest(BaseModel):
+    """Request body for an agent question."""
+
+    question: str = Field(..., min_length=1)
+    thread_id: str = Field(default="default", min_length=1, max_length=128)
+
+
+class AgentSource(BaseModel):
+    """A source the agent consulted."""
+
+    label: str
+    location: str
+    kind: str
+
+
+class AgentAskResponse(BaseModel):
+    """An agent answer plus the sources and tools it used."""
+
+    answer: str
+    sources: list[AgentSource]
+    tools_used: list[str]
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """Liveness probe."""
@@ -104,3 +128,21 @@ def ask_endpoint(req: AskRequest) -> AskResponse:
         for c in result.sources
     ]
     return AskResponse(answer=result.text, sources=sources)
+
+
+@app.post("/agent/ask", response_model=AgentAskResponse)
+def agent_ask_endpoint(req: AgentAskRequest) -> AgentAskResponse:
+    """Answer a question with the autonomous agent (doc search + web search + reasoning)."""
+    try:
+        result = run_agent(req.question, thread_id=req.thread_id)
+    except ConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    sources = [
+        AgentSource(label=s.label, location=s.location, kind=s.kind)
+        for s in result.sources
+    ]
+    return AgentAskResponse(
+        answer=result.text, sources=sources, tools_used=result.tools_used
+    )

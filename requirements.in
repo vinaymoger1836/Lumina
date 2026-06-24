@@ -11,6 +11,10 @@ langchain-community
 langchain-text-splitters
 langchain-groq
 
+# --- Agentic layer (Phase 2) ---
+langgraph
+tavily-python
+
 # --- Embeddings (pulls torch) ---
 sentence-transformers
 

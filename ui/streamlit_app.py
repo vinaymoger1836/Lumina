@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import uuid
 from pathlib import Path
 
 import streamlit as st
@@ -11,6 +12,7 @@ import streamlit as st
 # Allow `import app...` when Streamlit runs this file as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.agent.graph import run_agent  # noqa: E402
 from app.config import ConfigError, settings  # noqa: E402
 from app.logging_config import configure_logging  # noqa: E402
 from app.rag.ingest import IngestionError, ingest_pdf, ingest_url  # noqa: E402
@@ -24,7 +26,10 @@ st.set_page_config(page_title="Lumina", page_icon="📚", layout="wide")
 
 def _init_state() -> None:
     st.session_state.setdefault("ingested", [])  # list of human-readable labels
-    st.session_state.setdefault("messages", [])  # chat history
+    st.session_state.setdefault("messages", [])  # RAG chat history
+    st.session_state.setdefault("agent_messages", [])  # agent chat history
+    # Stable per-session id so the agent's checkpointer keeps conversation memory.
+    st.session_state.setdefault("agent_thread_id", uuid.uuid4().hex)
 
 
 def _sidebar() -> None:
@@ -70,10 +75,10 @@ def _sidebar() -> None:
 
 
 def _chat() -> None:
-    """Q&A chat interface."""
-    st.title("📚 Lumina")
+    """RAG Q&A chat interface (answers strictly from ingested documents)."""
     st.caption(
-        f"Ask questions about your documents · model: `{settings.groq_model}`"
+        f"Ask questions answered strictly from your documents · "
+        f"model: `{settings.groq_model}`"
     )
 
     for msg in st.session_state.messages:
@@ -117,10 +122,91 @@ def _chat() -> None:
     )
 
 
+_TOOL_LABELS = {
+    "search_docs": "📄 search_docs",
+    "web_search": "🌐 web_search",
+    "summarize": "📝 summarize",
+}
+
+
+def _render_agent_sources(sources: list[dict]) -> None:
+    """Show the agent's consulted sources, linking web results."""
+    if not sources:
+        return
+    with st.expander("Sources"):
+        for i, src in enumerate(sources, start=1):
+            if src["kind"] == "web" and src["location"]:
+                st.markdown(f"**[{i}]** 🌐 [{src['label']}]({src['location']})")
+            else:
+                st.markdown(f"**[{i}]** 📄 {src['label']}")
+
+
+def _agent_chat() -> None:
+    """Autonomous agent interface (doc search + web search + reasoning)."""
+    st.caption(
+        "The agent decides which tools to use — your documents, web search, "
+        "and summarization — and can chain several steps."
+    )
+
+    for msg in st.session_state.agent_messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if msg.get("tools_used"):
+                tags = " ".join(
+                    _TOOL_LABELS.get(t, t) for t in dict.fromkeys(msg["tools_used"])
+                )
+                st.caption(f"Tools used: {tags}")
+            _render_agent_sources(msg.get("sources", []))
+
+    prompt = st.chat_input("Ask the agent anything…", key="agent_input")
+    if not prompt:
+        return
+
+    st.session_state.agent_messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.chat_message("assistant"):
+        with st.spinner("Reasoning and using tools…"):
+            try:
+                result = run_agent(
+                    prompt, thread_id=st.session_state.agent_thread_id
+                )
+            except (ConfigError, RuntimeError) as exc:
+                st.error(str(exc))
+                return
+
+        st.markdown(result.text)
+        if result.tools_used:
+            tags = " ".join(
+                _TOOL_LABELS.get(t, t) for t in dict.fromkeys(result.tools_used)
+            )
+            st.caption(f"Tools used: {tags}")
+        sources = [
+            {"label": s.label, "location": s.location, "kind": s.kind}
+            for s in result.sources
+        ]
+        _render_agent_sources(sources)
+
+    st.session_state.agent_messages.append(
+        {
+            "role": "assistant",
+            "content": result.text,
+            "sources": sources,
+            "tools_used": result.tools_used,
+        }
+    )
+
+
 def main() -> None:
     _init_state()
+    st.title("📚 Lumina")
     _sidebar()
-    _chat()
+    qa_tab, agent_tab = st.tabs(["💬 Q&A", "🤖 Agent Mode"])
+    with qa_tab:
+        _chat()
+    with agent_tab:
+        _agent_chat()
 
 
 main()
