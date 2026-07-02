@@ -90,11 +90,13 @@ docker compose up -d --build      # first build is slow (torch layer)
 docker compose logs -f lumina-api # watch until "Application startup complete"
 ```
 
-Sanity-check the API from the box:
+Sanity-check the API from the box. The API port isn't published to the host,
+and the slim image has no `curl`, so probe it with Python inside the container:
 
 ```bash
-curl localhost:8000/health        # ...but 8000 isn't published; instead:
-docker compose exec lumina-api curl -s localhost:8000/health   # -> {"status":"ok"}
+docker compose exec lumina-api python -c \
+  "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read().decode())"
+# -> {"status":"ok"}
 ```
 
 If the API OOM-restarts (check `docker compose logs`), the swap file usually
