@@ -1,0 +1,45 @@
+# Lumina Phase 3 stack — runs the FastAPI API and n8n on one EC2 box.
+#
+# n8n reaches the API over the internal Docker network at http://lumina-api:8000,
+# so the API port is NOT published to the internet. Reach the n8n UI over an SSH
+# tunnel (see DEPLOY_AWS.md) — this keeps Google OAuth on a localhost redirect,
+# which Google allows without an HTTPS domain.
+#
+# Values come from the .env file in this directory (docker compose auto-loads it).
+
+services:
+  lumina-api:
+    build: .
+    image: lumina-api:latest
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "8000"            # internal-only; visible to the n8n container, not the internet
+    # ports:
+    #   - "8000:8000"     # uncomment ONLY if you want to hit the API from outside (open the port in the SG too)
+    volumes:
+      - model-cache:/models   # persist the downloaded embedding model across restarts
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"       # reach via SSH tunnel: ssh -L 5678:localhost:5678 ec2-user@<ip>
+    environment:
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Asia/Kolkata}
+      # These three are consumed by the workflow JSONs via $env.*
+      - LUMINA_API_BASE=http://lumina-api:8000
+      - N8N_WEBHOOK_TOKEN=${N8N_WEBHOOK_TOKEN}
+      - DIGEST_RECIPIENT=${DIGEST_RECIPIENT}
+    volumes:
+      - n8n-data:/home/node/.n8n   # workflows + Google credentials live here
+    depends_on:
+      - lumina-api
+
+volumes:
+  n8n-data:
+  model-cache:

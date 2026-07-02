@@ -19,7 +19,6 @@ An end-to-end AI app: **RAG** over your own PDFs/URLs, an **agentic layer** (Lan
 tool use), and **workflow automation** (n8n). Built on free-tier tools, deployed to
 Hugging Face Spaces.
 
-See [`CLAUDE.md`](./CLAUDE.md) for the full architecture, phases, and standing rules.
 
 ## Quick start (local)
 
