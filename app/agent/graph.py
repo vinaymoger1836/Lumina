@@ -49,10 +49,34 @@ _SYSTEM_PROMPT = SystemMessage(
 
 
 def _agent_node(state: MessagesState) -> dict:
-    """LLM step: decide on a tool call or produce the final answer."""
-    llm = build_chat_model(temperature=0.0).bind_tools(TOOLS)
-    response = llm.invoke([_SYSTEM_PROMPT, *state["messages"]])
-    return {"messages": [response]}
+    """LLM step: decide on a tool call or produce the final answer.
+
+    Groq's Llama models occasionally return a malformed tool call that Groq
+    rejects with a 400 ``tool_use_failed``. That is a client error, so the Groq
+    client does not retry it. We retry here instead, nudging the temperature up
+    each attempt so a near-deterministic bad generation doesn't just repeat.
+    """
+    messages = [_SYSTEM_PROMPT, *state["messages"]]
+    attempts = settings.agent_tool_call_retries + 1
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        temperature = 0.0 if attempt == 0 else min(0.3 * attempt, 0.8)
+        try:
+            llm = build_chat_model(temperature=temperature).bind_tools(TOOLS)
+            response = llm.invoke(messages)
+            return {"messages": [response]}
+        except Exception as exc:  # noqa: BLE001 - only the specific Groq error is retried
+            if "tool_use_failed" not in str(exc):
+                raise
+            last_exc = exc
+            logger.warning(
+                "Groq tool_use_failed (attempt %d/%d); retrying at higher temperature",
+                attempt + 1,
+                attempts,
+            )
+    # Retries exhausted — re-raise the last malformed-tool-call error.
+    assert last_exc is not None
+    raise last_exc
 
 
 def _build_graph() -> CompiledStateGraph:

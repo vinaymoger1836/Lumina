@@ -70,6 +70,10 @@ class Settings:
     # --- Agent (Phase 2) ---
     web_search_results: int = 5
     agent_recursion_limit: int = 12
+    # Groq's Llama models sometimes emit a malformed tool call (400
+    # `tool_use_failed`); retry the LLM step this many times, perturbing the
+    # temperature, before giving up.
+    agent_tool_call_retries: int = 2
 
     # --- Workflow automation (Phase 3) ---
     digest_chunks_per_doc: int = 6  # chunks sampled per document when summarizing
