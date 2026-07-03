@@ -31,6 +31,8 @@ services:
       - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
       - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Asia/Kolkata}
+      # Allow workflow expressions to read $env.* (n8n blocks this by default).
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       # These three are consumed by the workflow JSONs via $env.*
       - LUMINA_API_BASE=http://lumina-api:8000
       - N8N_WEBHOOK_TOKEN=${N8N_WEBHOOK_TOKEN}
