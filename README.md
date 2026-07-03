@@ -17,7 +17,6 @@ short_description: RAG over your PDFs and URLs, answered by Llama 3.3
 
 An end-to-end AI app: **RAG** over your own PDFs/URLs, an **agentic layer** (LangGraph
 tool use), and **workflow automation** (n8n). Built entirely on free-tier tools.
-
 ## What it does
 
 1. **RAG (Phase 1)** — upload PDFs or paste URLs, ask questions, get answers grounded
