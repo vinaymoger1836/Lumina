@@ -8,13 +8,13 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 8 * * *"
+              "expression": "0 0 15 * * *"
             }
           ]
         }
       },
       "id": "schedule-trigger",
-      "name": "Every day at 08:00",
+      "name": "Every day at 15:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [260, 300]
@@ -64,7 +64,7 @@
     }
   ],
   "connections": {
-    "Every day at 08:00": {
+    "Every day at 15:00": {
       "main": [
         [
           {

@@ -8,7 +8,7 @@ Lumina's FastAPI backend over HTTP.
 
 ```
 Google Drive (new PDF) ──► n8n Drive Trigger ──► download ──► POST /ingest/pdf ──► Qdrant
-Cron (daily 08:00)     ──► n8n Schedule Trigger ──► POST /webhooks/digest ──► Gmail send
+Cron (daily 15:00)     ──► n8n Schedule Trigger ──► POST /webhooks/digest ──► Gmail send
 ```
 
 ## Workflows
@@ -16,7 +16,7 @@ Cron (daily 08:00)     ──► n8n Schedule Trigger ──► POST /webhooks/d
 | File | Trigger | What it does | Lumina endpoint |
 |------|---------|--------------|-----------------|
 | `workflows/drive_auto_ingest.json` | New file in a Google Drive folder | Downloads the file and ingests it | `POST /ingest/pdf` (multipart) |
-| `workflows/daily_digest_email.json` | Cron `0 8 * * *` | Fetches a summary of all docs and emails it | `POST /webhooks/digest` |
+| `workflows/daily_digest_email.json` | Cron `0 0 15 * * *` | Fetches a summary of all docs and emails it | `POST /webhooks/digest` |
 
 The webhook receivers live in `app/workflows/n8n_webhooks.py`. There is also a
 token-protected `POST /webhooks/ingest` (JSON `{"url": "..."}`) for ingesting
@@ -73,7 +73,7 @@ duplicates.
 
 ## Notes
 
-- The schedule uses cron `0 8 * * *` (08:00 in the n8n instance's timezone — set
+- The schedule uses cron `0 0 15 * * *` (15:00 in the n8n instance's timezone — set
   `GENERIC_TIMEZONE` on the n8n host).
 - The digest call can take a while on large knowledge bases (one LLM summary per
   document); the HTTP nodes set a 120 s timeout.
