@@ -1,4 +1,8 @@
 # Keep the build context small and secrets out of the image.
+# NOTE: this file is shared by BOTH the AWS API Dockerfile and Hugging Face's
+# Streamlit SDK build. Do NOT ignore `ui/` — HF's build copies the repo and
+# needs `ui/streamlit_app.py` as its entry point. (The AWS image harmlessly
+# includes the unused UI file.)
 .venv/
 .git/
 .gitignore
@@ -7,7 +11,6 @@
 .streamlit/
 data/
 tests/
-ui/
 n8n/
 **/__pycache__/
 *.pyc
