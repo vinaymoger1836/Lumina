@@ -56,7 +56,3 @@ All secrets are read from environment variables (`.env` locally). See
 | `app/workflows/` | n8n webhook receivers (Phase 3) |
 | `ui/streamlit_app.py` | Streamlit frontend |
 | `tests/` | pytest suite |
-
-## Status
-
-Phase 1 (RAG Core) — in progress.
