@@ -24,6 +24,46 @@ logger = logging.getLogger(__name__)
 st.set_page_config(page_title="Lumina", page_icon="📚", layout="wide")
 
 
+_CHAT_CSS = """
+<style>
+/* --- ChatGPT/Claude-style chat bubbles --- */
+
+/* Base bubble: constrain width, round the corners, add padding. */
+[data-testid="stChatMessage"] {
+    width: fit-content;
+    max-width: 82%;
+    border-radius: 18px;
+    padding: 0.15rem 0.9rem;
+    margin-bottom: 0.6rem;
+}
+
+/* Assistant (AI) → left side, neutral bubble. */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) {
+    background: rgba(128, 128, 128, 0.12);
+    margin-right: auto;
+}
+
+/* User → right side, accent bubble, avatar flipped to the right. */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+    background: rgba(59, 130, 246, 0.16);
+    margin-left: auto;
+    flex-direction: row-reverse;
+}
+
+/* Keep the input docked to the bottom of the viewport within tabs. */
+[data-testid="stBottomBlockContainer"] {
+    position: sticky;
+    bottom: 0;
+}
+</style>
+"""
+
+
+def _inject_css() -> None:
+    """Style chat messages as left/right bubbles and pin the input to the bottom."""
+    st.markdown(_CHAT_CSS, unsafe_allow_html=True)
+
+
 def _init_state() -> None:
     st.session_state.setdefault("ingested", [])  # list of human-readable labels
     st.session_state.setdefault("messages", [])  # RAG chat history
@@ -200,6 +240,7 @@ def _agent_chat() -> None:
 
 def main() -> None:
     _init_state()
+    _inject_css()
     st.title("📚 Lumina")
     _sidebar()
     qa_tab, agent_tab = st.tabs(["💬 Q&A", "🤖 Agent Mode"])
