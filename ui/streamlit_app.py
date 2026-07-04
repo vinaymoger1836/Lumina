@@ -26,6 +26,11 @@ st.set_page_config(page_title="Lumina", page_icon="📚", layout="wide")
 
 _CHAT_CSS = """
 <style>
+/* --- Tighten the top so the header sits cleanly at the top --- */
+[data-testid="stMainBlockContainer"] {
+    padding-top: 2.5rem;
+}
+
 /* --- ChatGPT/Claude-style chat bubbles --- */
 
 /* Base bubble: constrain width, round the corners, add padding. */
@@ -50,10 +55,9 @@ _CHAT_CSS = """
     flex-direction: row-reverse;
 }
 
-/* Keep the input docked to the bottom of the viewport within tabs. */
+/* Give the docked input bar a subtle top divider so it reads as a footer. */
 [data-testid="stBottomBlockContainer"] {
-    position: sticky;
-    bottom: 0;
+    border-top: 1px solid rgba(128, 128, 128, 0.18);
 }
 </style>
 """
@@ -114,25 +118,29 @@ def _sidebar() -> None:
                 st.write(label)
 
 
-def _chat() -> None:
-    """RAG Q&A chat interface (answers strictly from ingested documents)."""
+def _render_qa_sources(sources: list[dict]) -> None:
+    """Show the RAG citations for one message inside an expander."""
+    if not sources:
+        return
+    with st.expander("Sources"):
+        for i, src in enumerate(sources, start=1):
+            st.markdown(f"**[{i}]** {src['citation']} · score {src['score']:.3f}")
+
+
+def _render_qa_history() -> None:
+    """Render the RAG Q&A conversation so far."""
     st.caption(
         f"Ask questions answered strictly from your documents · "
         f"model: `{settings.groq_model}`"
     )
-
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-            if msg.get("sources"):
-                with st.expander("Sources"):
-                    for i, src in enumerate(msg["sources"], start=1):
-                        st.markdown(f"**[{i}]** {src['citation']} · score {src['score']:.3f}")
+            _render_qa_sources(msg.get("sources", []))
 
-    prompt = st.chat_input("Ask a question about your documents…")
-    if not prompt:
-        return
 
+def _process_qa(prompt: str) -> None:
+    """Answer a new RAG question and append both turns to history."""
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -141,10 +149,7 @@ def _chat() -> None:
         with st.spinner("Thinking…"):
             try:
                 result = answer_question(prompt)
-            except ConfigError as exc:
-                st.error(str(exc))
-                return
-            except RuntimeError as exc:
+            except (ConfigError, RuntimeError) as exc:
                 st.error(str(exc))
                 return
 
@@ -152,10 +157,7 @@ def _chat() -> None:
         sources = [
             {"citation": c.citation(), "score": c.score} for c in result.sources
         ]
-        if sources:
-            with st.expander("Sources"):
-                for i, src in enumerate(sources, start=1):
-                    st.markdown(f"**[{i}]** {src['citation']} · score {src['score']:.3f}")
+        _render_qa_sources(sources)
 
     st.session_state.messages.append(
         {"role": "assistant", "content": result.text, "sources": sources}
@@ -181,27 +183,29 @@ def _render_agent_sources(sources: list[dict]) -> None:
                 st.markdown(f"**[{i}]** 📄 {src['label']}")
 
 
-def _agent_chat() -> None:
-    """Autonomous agent interface (doc search + web search + reasoning)."""
+def _render_tools_used(tools_used: list[str]) -> None:
+    """Render the caption listing which tools the agent invoked."""
+    if not tools_used:
+        return
+    tags = " ".join(_TOOL_LABELS.get(t, t) for t in dict.fromkeys(tools_used))
+    st.caption(f"Tools used: {tags}")
+
+
+def _render_agent_history() -> None:
+    """Render the agent-mode conversation so far."""
     st.caption(
         "The agent decides which tools to use — your documents, web search, "
         "and summarization — and can chain several steps."
     )
-
     for msg in st.session_state.agent_messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-            if msg.get("tools_used"):
-                tags = " ".join(
-                    _TOOL_LABELS.get(t, t) for t in dict.fromkeys(msg["tools_used"])
-                )
-                st.caption(f"Tools used: {tags}")
+            _render_tools_used(msg.get("tools_used", []))
             _render_agent_sources(msg.get("sources", []))
 
-    prompt = st.chat_input("Ask the agent anything…", key="agent_input")
-    if not prompt:
-        return
 
+def _process_agent(prompt: str) -> None:
+    """Run the agent on a new question and append both turns to history."""
     st.session_state.agent_messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -209,19 +213,13 @@ def _agent_chat() -> None:
     with st.chat_message("assistant"):
         with st.spinner("Reasoning and using tools…"):
             try:
-                result = run_agent(
-                    prompt, thread_id=st.session_state.agent_thread_id
-                )
+                result = run_agent(prompt, thread_id=st.session_state.agent_thread_id)
             except (ConfigError, RuntimeError) as exc:
                 st.error(str(exc))
                 return
 
         st.markdown(result.text)
-        if result.tools_used:
-            tags = " ".join(
-                _TOOL_LABELS.get(t, t) for t in dict.fromkeys(result.tools_used)
-            )
-            st.caption(f"Tools used: {tags}")
+        _render_tools_used(result.tools_used)
         sources = [
             {"label": s.label, "location": s.location, "kind": s.kind}
             for s in result.sources
@@ -238,16 +236,40 @@ def _agent_chat() -> None:
     )
 
 
+_QA_MODE = "💬 Q&A"
+_AGENT_MODE = "🤖 Agent Mode"
+
+
 def main() -> None:
     _init_state()
     _inject_css()
     st.title("📚 Lumina")
     _sidebar()
-    qa_tab, agent_tab = st.tabs(["💬 Q&A", "🤖 Agent Mode"])
-    with qa_tab:
-        _chat()
-    with agent_tab:
-        _agent_chat()
+
+    # A top-level toggle (not st.tabs) so the single chat input below stays
+    # docked to the bottom of the viewport — chat_input only auto-docks when it
+    # is a top-level element, which it cannot be inside a tab.
+    mode = st.segmented_control(
+        "Mode",
+        options=[_QA_MODE, _AGENT_MODE],
+        default=_QA_MODE,
+        label_visibility="collapsed",
+        key="chat_mode",
+    )
+
+    if mode == _AGENT_MODE:
+        _render_agent_history()
+        placeholder = "Ask the agent anything…"
+    else:
+        _render_qa_history()
+        placeholder = "Ask a question about your documents…"
+
+    prompt = st.chat_input(placeholder)
+    if prompt:
+        if mode == _AGENT_MODE:
+            _process_agent(prompt)
+        else:
+            _process_qa(prompt)
 
 
 main()
