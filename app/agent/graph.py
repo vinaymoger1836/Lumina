@@ -12,10 +12,13 @@ memory so follow-up questions retain context.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from dataclasses import dataclass
 
 from langchain_core.messages import (
+    AIMessage,
     AnyMessage,
     HumanMessage,
     SystemMessage,
@@ -48,13 +51,70 @@ _SYSTEM_PROMPT = SystemMessage(
 )
 
 
+_TOOL_NAMES = {t.name for t in TOOLS}
+
+# Groq's Llama models sometimes emit a tool call in the Llama-native
+# ``<function=name{...json...}>`` syntax that Groq's server-side parser rejects
+# with a 400 ``tool_use_failed`` — even though the intent (name + args) is intact
+# in the error's ``failed_generation`` field. This matches one such call so we can
+# reconstruct it. The ``>`` after the name and the closing tag are both optional
+# because Groq's malformed output is inconsistent about them.
+_FUNCTION_CALL_RE = re.compile(
+    r"<function=(?P<name>[A-Za-z_]\w*)\s*>?\s*(?P<args>\{.*?\})",
+    re.DOTALL,
+)
+
+
+def _extract_failed_generation(exc: Exception) -> str | None:
+    """Pull Groq's ``failed_generation`` text out of a tool_use_failed error."""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            generation = error.get("failed_generation")
+            if isinstance(generation, str):
+                return generation
+    # Fallback: dig it out of the stringified error payload.
+    match = re.search(r"'failed_generation':\s*'(.*?)'\}", str(exc), re.DOTALL)
+    return match.group(1) if match else None
+
+
+def _recover_tool_call(exc: Exception) -> AIMessage | None:
+    """Rebuild a valid tool-call message from Groq's malformed ``failed_generation``.
+
+    Returns an ``AIMessage`` carrying the salvaged tool calls, or ``None`` if
+    nothing parseable (a known tool name + valid JSON args) could be recovered.
+    """
+    generation = _extract_failed_generation(exc)
+    if not generation:
+        return None
+    tool_calls: list[dict] = []
+    for i, match in enumerate(_FUNCTION_CALL_RE.finditer(generation)):
+        name = match.group("name")
+        if name not in _TOOL_NAMES:
+            continue
+        try:
+            args = json.loads(match.group("args"))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(args, dict):
+            continue
+        tool_calls.append({"name": name, "args": args, "id": f"call_recovered_{i}"})
+    if not tool_calls:
+        return None
+    return AIMessage(content="", tool_calls=tool_calls)
+
+
 def _agent_node(state: MessagesState) -> dict:
     """LLM step: decide on a tool call or produce the final answer.
 
     Groq's Llama models occasionally return a malformed tool call that Groq
     rejects with a 400 ``tool_use_failed``. That is a client error, so the Groq
-    client does not retry it. We retry here instead, nudging the temperature up
-    each attempt so a near-deterministic bad generation doesn't just repeat.
+    client does not retry it. We handle it in three escalating ways: first try to
+    salvage the intended tool call from the error's ``failed_generation`` field;
+    if that fails, retry with the temperature nudged up so a near-deterministic
+    bad generation doesn't just repeat; and if every retry fails, fall back to a
+    tool-free answer so the user still gets a response instead of an error.
     """
     messages = [_SYSTEM_PROMPT, *state["messages"]]
     attempts = settings.agent_tool_call_retries + 1
@@ -69,14 +129,29 @@ def _agent_node(state: MessagesState) -> dict:
             if "tool_use_failed" not in str(exc):
                 raise
             last_exc = exc
+            recovered = _recover_tool_call(exc)
+            if recovered is not None:
+                logger.info(
+                    "Recovered malformed tool call from failed_generation "
+                    "(attempt %d/%d)",
+                    attempt + 1,
+                    attempts,
+                )
+                return {"messages": [recovered]}
             logger.warning(
                 "Groq tool_use_failed (attempt %d/%d); retrying at higher temperature",
                 attempt + 1,
                 attempts,
             )
-    # Retries exhausted — re-raise the last malformed-tool-call error.
-    assert last_exc is not None
-    raise last_exc
+    # Every attempt failed to produce a usable tool call — degrade gracefully to a
+    # tool-free answer rather than surfacing an error to the user.
+    logger.error("tool_use_failed persisted after %d attempts; answering without tools", attempts)
+    try:
+        response = build_chat_model(temperature=0.0).invoke(messages)
+        return {"messages": [response]}
+    except Exception as fallback_exc:  # noqa: BLE001 - prefer the original tool-call error
+        assert last_exc is not None
+        raise last_exc from fallback_exc
 
 
 def _build_graph() -> CompiledStateGraph:

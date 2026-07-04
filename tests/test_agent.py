@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.agent.graph import _collect_turn, _dedupe_sources
+from app.agent.graph import (
+    _collect_turn,
+    _dedupe_sources,
+    _extract_failed_generation,
+    _recover_tool_call,
+)
 from app.agent.tools import (
     SourceRef,
     _format_doc_results,
@@ -108,3 +113,53 @@ def test_collect_turn_handles_no_tools() -> None:
     sources, tools_used = _collect_turn(messages)
     assert sources == []
     assert tools_used == []
+
+
+# --- Malformed tool-call recovery (Groq tool_use_failed) --------------------
+
+
+class _FakeGroqError(Exception):
+    """Stands in for groq.BadRequestError, which carries a ``.body`` dict."""
+
+    def __init__(self, failed_generation: str) -> None:
+        self.body = {
+            "error": {
+                "message": "Failed to call a function.",
+                "code": "tool_use_failed",
+                "failed_generation": failed_generation,
+            }
+        }
+        super().__init__(str(self.body))
+
+
+def test_extract_failed_generation_from_body() -> None:
+    exc = _FakeGroqError('<function=search_docs{"query": "notice period"}</function>')
+    assert _extract_failed_generation(exc) == (
+        '<function=search_docs{"query": "notice period"}</function>'
+    )
+
+
+def test_recover_tool_call_from_malformed_generation() -> None:
+    # The exact Llama-native shape Groq rejected in the wild (no `>` after name).
+    exc = _FakeGroqError('<function=search_docs{"query": "notice period"}</function>')
+    message = _recover_tool_call(exc)
+    assert message is not None
+    assert len(message.tool_calls) == 1
+    call = message.tool_calls[0]
+    assert call["name"] == "search_docs"
+    assert call["args"] == {"query": "notice period"}
+    assert call["id"]
+
+
+def test_recover_tool_call_rejects_unknown_tool() -> None:
+    exc = _FakeGroqError('<function=not_a_real_tool{"x": 1}>')
+    assert _recover_tool_call(exc) is None
+
+
+def test_recover_tool_call_rejects_bad_json() -> None:
+    exc = _FakeGroqError("<function=search_docs{not valid json}>")
+    assert _recover_tool_call(exc) is None
+
+
+def test_recover_tool_call_none_without_failed_generation() -> None:
+    assert _recover_tool_call(ValueError("some other error")) is None
