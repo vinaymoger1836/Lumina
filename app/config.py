@@ -64,7 +64,7 @@ class Settings:
     # --- Ingestion / retrieval defaults ---
     chunk_size: int = 1000
     chunk_overlap: int = 150
-    top_k: int = 4
+    top_k: int = 5
     max_upload_mb: int = 25
 
     # --- Agent (Phase 2) ---
