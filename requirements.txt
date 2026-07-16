@@ -1,3 +1,6 @@
+# CPU-only PyTorch wheels — keeps the Hugging Face (CPU) build from pulling the
+# ~1.5 GB CUDA/nvidia-* stack. Re-add this line after any `pip freeze`.
+--extra-index-url https://download.pytorch.org/whl/cpu
 aiohappyeyeballs==2.6.2
 aiohttp==3.14.1
 aiosignal==1.4.0
@@ -112,7 +115,7 @@ threadpoolctl==3.6.0
 tiktoken==0.13.0
 tokenizers==0.22.2
 toml==0.10.2
-torch==2.12.1
+torch==2.12.1+cpu
 tqdm==4.68.3
 transformers==5.12.1
 typer==0.25.1
