@@ -17,6 +17,7 @@ from app.config import ConfigError, settings  # noqa: E402
 from app.logging_config import configure_logging  # noqa: E402
 from app.rag.ingest import IngestionError, ingest_pdf, ingest_url  # noqa: E402
 from app.rag.pipeline import answer_question  # noqa: E402
+from app.rag.vectorstore import delete_by_source, list_documents  # noqa: E402
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -69,7 +70,6 @@ def _inject_css() -> None:
 
 
 def _init_state() -> None:
-    st.session_state.setdefault("ingested", [])  # list of human-readable labels
     st.session_state.setdefault("messages", [])  # RAG chat history
     st.session_state.setdefault("agent_messages", [])  # agent chat history
     # Stable per-session id so the agent's checkpointer keeps conversation memory.
@@ -91,9 +91,6 @@ def _sidebar() -> None:
                 except (IngestionError, ConfigError) as exc:
                     st.error(str(exc))
                 else:
-                    st.session_state.ingested.append(
-                        f"📄 {result.title} ({result.chunks} chunks)"
-                    )
                     st.success(f"Added {result.chunks} chunks from {result.title}.")
 
         st.divider()
@@ -106,16 +103,40 @@ def _sidebar() -> None:
                 except (IngestionError, ConfigError) as exc:
                     st.error(str(exc))
                 else:
-                    st.session_state.ingested.append(
-                        f"🔗 {result.title} ({result.chunks} chunks)"
-                    )
                     st.success(f"Added {result.chunks} chunks from {result.title}.")
 
-        if st.session_state.ingested:
-            st.divider()
-            st.caption("Ingested this session:")
-            for label in st.session_state.ingested:
-                st.write(label)
+        _knowledge_base()
+
+
+def _knowledge_base() -> None:
+    """List the documents held in Qdrant and let the user delete any of them."""
+    st.divider()
+    st.subheader("📚 Knowledge base")
+    try:
+        docs = list_documents()
+    except ConfigError as exc:
+        st.info(str(exc))
+        return
+    except Exception as exc:  # noqa: BLE001 - surface Qdrant/connectivity errors in-UI
+        st.error(f"Could not load the knowledge base: {exc}")
+        return
+
+    if not docs:
+        st.caption("No documents ingested yet.")
+        return
+
+    for doc in docs:
+        row, action = st.columns([0.82, 0.18])
+        row.markdown(f"📄 {doc.title}")
+        row.caption(f"{doc.chunk_count} chunks")
+        if action.button("🗑", key=f"del_{doc.source}", help=f"Delete {doc.title}"):
+            with st.spinner(f"Removing {doc.title}…"):
+                try:
+                    delete_by_source(doc.source)
+                except Exception as exc:  # noqa: BLE001 - report deletion failure in-UI
+                    st.error(f"Delete failed: {exc}")
+                else:
+                    st.rerun()
 
 
 def _render_qa_sources(sources: list[dict]) -> None:

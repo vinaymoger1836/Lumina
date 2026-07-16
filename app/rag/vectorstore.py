@@ -7,6 +7,7 @@ the collection's vector config stays consistent with the embedding model.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from functools import lru_cache
 
 from qdrant_client import QdrantClient
@@ -16,6 +17,15 @@ from app.config import settings
 from app.rag.embeddings import embedding_dimension
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class StoredDocument:
+    """A distinct ingested document and how many chunks it occupies."""
+
+    source: str
+    title: str
+    chunk_count: int
 
 
 @lru_cache(maxsize=1)
@@ -54,6 +64,45 @@ def ensure_collection(collection: str | None = None) -> str:
         field_schema=qmodels.PayloadSchemaType.KEYWORD,
     )
     return name
+
+
+def list_documents(collection: str | None = None) -> list[StoredDocument]:
+    """List the distinct ingested documents with their chunk counts.
+
+    Scrolls the collection reading payloads only (no vectors) and groups points
+    by their `source` value, preserving first-seen order. Powers the knowledge-
+    base management view so users can see and prune what retrieval draws from.
+    """
+    name = ensure_collection(collection)
+    client = get_client()
+    counts: dict[str, int] = {}
+    titles: dict[str, str] = {}
+    order: list[str] = []
+    offset = None
+    while True:
+        records, offset = client.scroll(
+            collection_name=name,
+            limit=256,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        for r in records:
+            p = r.payload or {}
+            source = p.get("source", "")
+            if not source:
+                continue
+            if source not in counts:
+                counts[source] = 0
+                titles[source] = p.get("title") or source
+                order.append(source)
+            counts[source] += 1
+        if offset is None:  # no more pages
+            break
+    return [
+        StoredDocument(source=s, title=titles[s], chunk_count=counts[s])
+        for s in order
+    ]
 
 
 def delete_by_source(source: str, collection: str | None = None) -> None:

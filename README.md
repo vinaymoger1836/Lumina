@@ -20,7 +20,8 @@ tool use), and **workflow automation** (n8n). Built entirely on free-tier tools.
 ## What it does
 
 1. **RAG (Phase 1)** — upload PDFs or paste URLs, ask questions, get answers grounded
-   in those documents with source citations.
+   in those documents with source citations. Manage the knowledge base directly from
+   the sidebar: see every ingested document with its chunk count and delete any of them.
 2. **Agentic layer (Phase 2)** — an "Agent Mode" that autonomously chooses between
    searching your documents, searching the web (Tavily), and summarizing, chaining
    steps with a LangGraph state machine.
@@ -35,7 +36,7 @@ tool use), and **workflow automation** (n8n). Built entirely on free-tier tools.
                     └───────────────────────────────────┬──────────────────────────────────────┘
                                                          │ HTTP
                     ┌────────────────────────── FastAPI (AWS EC2) ─────────────────────────────┐
-   PyMuPDF ────────►│  /ingest  ·  /ask  ·  /agent/ask  ·  /webhooks/{ingest,digest}           │
+   PyMuPDF ────────►│  /ingest · /ask · /agent/ask · /documents · /webhooks/{ingest,digest}    │
    WebBaseLoader    │      │            │            │                                          │
                     │      ▼            ▼            ▼                                          │
                     │  chunk+embed   retrieve    LangGraph agent (search_docs/web_search/…)     │

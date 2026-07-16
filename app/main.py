@@ -16,6 +16,7 @@ from app.config import ConfigError
 from app.logging_config import configure_logging
 from app.rag.ingest import IngestionError, ingest_pdf, ingest_url
 from app.rag.pipeline import answer_question
+from app.rag.vectorstore import delete_by_source, list_documents
 from app.workflows.n8n_webhooks import router as webhooks_router
 
 configure_logging()
@@ -85,6 +86,27 @@ class AgentAskResponse(BaseModel):
     tools_used: list[str]
 
 
+class DocumentInfo(BaseModel):
+    """One document currently held in the knowledge base."""
+
+    source: str
+    title: str
+    chunk_count: int
+
+
+class DocumentsResponse(BaseModel):
+    """The set of documents available to retrieval."""
+
+    documents: list[DocumentInfo]
+
+
+class DeleteDocumentResponse(BaseModel):
+    """Result of removing a document from the knowledge base."""
+
+    source: str
+    deleted: bool
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """Liveness probe."""
@@ -148,3 +170,28 @@ def agent_ask_endpoint(req: AgentAskRequest) -> AgentAskResponse:
     return AgentAskResponse(
         answer=result.text, sources=sources, tools_used=result.tools_used
     )
+
+
+@app.get("/documents", response_model=DocumentsResponse)
+def list_documents_endpoint() -> DocumentsResponse:
+    """List the documents currently in the knowledge base."""
+    try:
+        docs = list_documents()
+    except ConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return DocumentsResponse(
+        documents=[DocumentInfo(**d.__dict__) for d in docs]
+    )
+
+
+@app.delete("/documents/{source:path}", response_model=DeleteDocumentResponse)
+def delete_document_endpoint(source: str) -> DeleteDocumentResponse:
+    """Remove one document (all of its chunks) from the knowledge base."""
+    source = source.strip()
+    if not source:
+        raise HTTPException(status_code=422, detail="source must not be empty")
+    try:
+        delete_by_source(source)
+    except ConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return DeleteDocumentResponse(source=source, deleted=True)
