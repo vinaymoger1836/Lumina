@@ -20,7 +20,7 @@ from qdrant_client.http import models as qmodels
 
 from app.config import settings
 from app.rag.embeddings import embed_texts
-from app.rag.vectorstore import ensure_collection, get_client
+from app.rag.vectorstore import delete_by_source, ensure_collection, get_client
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +97,13 @@ def _upsert(
     title: str,
     pages: list[int | None],
 ) -> int:
-    """Embed chunks and upsert them into Qdrant. Returns the chunk count."""
+    """Embed chunks and upsert them into Qdrant. Returns the chunk count.
+
+    Re-ingesting the same source replaces its chunks rather than duplicating
+    them: we delete any prior chunks for this `source` before upserting.
+    """
     collection = ensure_collection()
+    delete_by_source(source, collection)
     vectors = embed_texts(texts)
     points = [
         qmodels.PointStruct(
