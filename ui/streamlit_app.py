@@ -106,6 +106,23 @@ def _sidebar() -> None:
                     st.success(f"Added {result.chunks} chunks from {result.title}.")
 
         _knowledge_base()
+        _chat_controls()
+
+
+def _chat_controls() -> None:
+    """Let the user clear the current mode's conversation history."""
+    st.divider()
+    mode = st.session_state.get("chat_mode", _QA_MODE)
+    is_agent = mode == _AGENT_MODE
+    label = "🧹 Clear Agent chat" if is_agent else "🧹 Clear Q&A chat"
+    if st.button(label, use_container_width=True):
+        if is_agent:
+            # New thread_id so the agent's checkpointer memory resets too.
+            st.session_state.agent_messages = []
+            st.session_state.agent_thread_id = uuid.uuid4().hex
+        else:
+            st.session_state.messages = []
+        st.rerun()
 
 
 def _knowledge_base() -> None:

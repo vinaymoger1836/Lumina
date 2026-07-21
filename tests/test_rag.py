@@ -5,9 +5,9 @@ These avoid network and model loading: only pure logic is exercised.
 
 from __future__ import annotations
 
-import pytest
-
 from typing import Any
+
+import pytest
 
 from app.rag import pipeline as pipeline_module
 from app.rag import retriever as retriever_module
