@@ -43,6 +43,7 @@ def search(query: str, top_k: int | None = None) -> list[RetrievedChunk]:
         collection_name=collection,
         query=vector,
         limit=k,
+        score_threshold=settings.min_relevance_score,
         with_payload=True,
     ).points
 

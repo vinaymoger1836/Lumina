@@ -66,6 +66,10 @@ class Settings:
     chunk_overlap: int = 150
     top_k: int = 5
     max_upload_mb: int = 25
+    # Drop retrieved chunks whose cosine similarity is below this. all-MiniLM-L6-v2
+    # scores relevant passages ~0.3+; anything under this is noise that would
+    # otherwise be fed to the LLM as if it were grounding.
+    min_relevance_score: float = 0.2
 
     # --- Agent (Phase 2) ---
     web_search_results: int = 5

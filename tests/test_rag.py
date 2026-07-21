@@ -7,8 +7,11 @@ from __future__ import annotations
 
 import pytest
 
+from typing import Any
+
+from app.rag import retriever as retriever_module
 from app.rag.ingest import IngestionError, _splitter, _validate_pdf, _validate_url
-from app.rag.retriever import RetrievedChunk
+from app.rag.retriever import RetrievedChunk, search
 
 # --- PDF validation ---------------------------------------------------------
 
@@ -79,3 +82,41 @@ def test_citation_uses_title_for_url() -> None:
         score=0.5,
     )
     assert c.citation() == "Example"
+
+
+# --- Retrieval relevance threshold ------------------------------------------
+
+class _FakePoint:
+    def __init__(self, payload: dict[str, Any], score: float) -> None:
+        self.payload = payload
+        self.score = score
+
+
+class _FakeQueryResult:
+    def __init__(self, points: list[_FakePoint]) -> None:
+        self.points = points
+
+
+class _RecordingClient:
+    """Captures the kwargs passed to query_points and returns preset points."""
+
+    def __init__(self, points: list[_FakePoint]) -> None:
+        self._points = points
+        self.last_kwargs: dict[str, Any] = {}
+
+    def query_points(self, **kwargs: Any) -> _FakeQueryResult:
+        self.last_kwargs = kwargs
+        return _FakeQueryResult(self._points)
+
+
+def test_search_forwards_min_relevance_score(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _RecordingClient([_FakePoint({"text": "hit", "source": "a.pdf"}, 0.7)])
+    monkeypatch.setattr(retriever_module, "get_client", lambda: client)
+    monkeypatch.setattr(retriever_module, "ensure_collection", lambda: "c")
+    monkeypatch.setattr(retriever_module, "embed_query", lambda q: [0.0])
+
+    results = search("q")
+
+    assert client.last_kwargs["score_threshold"] == retriever_module.settings.min_relevance_score
+    assert len(results) == 1
+    assert results[0].text == "hit"
