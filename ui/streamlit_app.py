@@ -16,7 +16,7 @@ from app.agent.graph import run_agent  # noqa: E402
 from app.config import ConfigError, settings  # noqa: E402
 from app.logging_config import configure_logging  # noqa: E402
 from app.rag.ingest import IngestionError, ingest_pdf, ingest_url  # noqa: E402
-from app.rag.pipeline import answer_question  # noqa: E402
+from app.rag.pipeline import stream_answer  # noqa: E402
 from app.rag.vectorstore import delete_by_source, list_documents  # noqa: E402
 
 configure_logging()
@@ -161,27 +161,25 @@ def _render_qa_history() -> None:
 
 
 def _process_qa(prompt: str) -> None:
-    """Answer a new RAG question and append both turns to history."""
+    """Answer a new RAG question, streaming the reply, and append both turns."""
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Thinking…"):
-            try:
-                result = answer_question(prompt)
-            except (ConfigError, RuntimeError) as exc:
-                st.error(str(exc))
-                return
+        try:
+            with st.spinner("Retrieving…"):
+                chunks, tokens = stream_answer(prompt)
+            text = st.write_stream(tokens)
+        except (ConfigError, RuntimeError) as exc:
+            st.error(str(exc))
+            return
 
-        st.markdown(result.text)
-        sources = [
-            {"citation": c.citation(), "score": c.score} for c in result.sources
-        ]
+        sources = [{"citation": c.citation(), "score": c.score} for c in chunks]
         _render_qa_sources(sources)
 
     st.session_state.messages.append(
-        {"role": "assistant", "content": result.text, "sources": sources}
+        {"role": "assistant", "content": text, "sources": sources}
     )
 
 

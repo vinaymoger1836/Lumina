@@ -9,6 +9,7 @@ import pytest
 
 from typing import Any
 
+from app.rag import pipeline as pipeline_module
 from app.rag import retriever as retriever_module
 from app.rag.ingest import IngestionError, _splitter, _validate_pdf, _validate_url
 from app.rag.retriever import RetrievedChunk, search
@@ -120,3 +121,45 @@ def test_search_forwards_min_relevance_score(monkeypatch: pytest.MonkeyPatch) ->
     assert client.last_kwargs["score_threshold"] == retriever_module.settings.min_relevance_score
     assert len(results) == 1
     assert results[0].text == "hit"
+
+
+# --- Streaming answers ------------------------------------------------------
+
+class _Delta:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+class _StreamingLLM:
+    def __init__(self, parts: list[str]) -> None:
+        self._parts = parts
+
+    def stream(self, _messages: Any) -> Any:
+        return iter(_Delta(p) for p in self._parts)
+
+
+def _chunk(text: str) -> RetrievedChunk:
+    return RetrievedChunk(
+        text=text, source="a.pdf", source_type="pdf", title="a.pdf", page=1, score=0.9
+    )
+
+
+def test_stream_answer_yields_tokens_with_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pipeline_module, "search", lambda q, top_k=None: [_chunk("ctx")])
+    monkeypatch.setattr(pipeline_module, "_llm", lambda: _StreamingLLM(["Hel", "lo"]))
+
+    sources, tokens = pipeline_module.stream_answer("q")
+
+    assert "".join(tokens) == "Hello"
+    assert [s.source for s in sources] == ["a.pdf"]
+
+
+def test_stream_answer_no_docs_returns_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pipeline_module, "search", lambda q, top_k=None: [])
+
+    sources, tokens = pipeline_module.stream_answer("q")
+
+    assert sources == []
+    assert "".join(tokens) == pipeline_module._NO_DOCS_MESSAGE
